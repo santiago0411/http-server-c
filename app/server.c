@@ -1,9 +1,11 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #ifdef LOCAL_TEST
@@ -13,14 +15,76 @@
 #endif
 
 #define IN_BUF_SIZE 1024
-static uint8_t IN_BUF[IN_BUF_SIZE];
+static char IN_BUF[IN_BUF_SIZE];
+
+static const char* RESPONSE_OK = "HTTP/1.1 200 OK\r\n\r\n";
+static const char* RESPONSE_NOT_FOUND = "HTTP/1.1 404 OK\r\n\r\n";
+
+typedef enum
+{
+	GET,
+	POST,
+} HttpMethod;
+
+typedef struct
+{
+	HttpMethod Method;
+	const char* Path;
+} HttpRequest;
+
+bool parse_request(const char* buf, const int size, HttpRequest* req)
+{
+	char* next_space = memchr(buf, ' ', size);
+	if (!next_space) {
+		fprintf(stderr, "Not enough bytes to parse HttpMethod from request\n");
+		return false;
+	}
+
+	int method_str_size = next_space - buf;
+	if (strncmp(buf, "GET", method_str_size) == 0) {
+		req->Method = GET;
+	} else if (strncmp(buf, "POST", method_str_size) == 0) {
+		req->Method = POST;
+	} else {
+		fprintf(stderr, "Unknown request method %.*s", method_str_size, buf);
+		return false;
+	}
+
+	if (method_str_size + 1 >= size) {
+		fprintf(stderr, "Not enough bytes to parse Path from request\n");
+		return;
+	}
+
+	buf += method_str_size + 1;
+	next_space = memchr(buf, ' ', size);
+	if (!next_space) {
+		fprintf(stderr, "Failed to parse Path from request\n");
+		return false;
+	}
+
+	int path_str_size = next_space - buf;
+	req->Path = calloc(path_str_size + 1, sizeof(char));
+	memcpy(req->Path, buf, path_str_size);
+	return true;
+}
+
+bool handle_request(const char* buf, const int size)
+{
+	HttpRequest req;
+	// Only parsing method and path for now
+	parse_request(buf, size, &req);
+	// Only handling returning true when the path is '/' for now
+	const bool result = strcmp(req.Path, "/") == 0;
+	free(req.Path);
+	return result;
+}
 
 int accept_client(const int socket_fd)
 {
 	struct sockaddr_in client_addr;
 	const int client_addr_len = sizeof(client_addr);
 
-	const int client_fd = accept(socket_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	const int client_fd = accept(socket_fd, (struct sockaddr *) &client_addr, (socklen_t*)&client_addr_len);
 	if (client_fd < 0) {
 		fprintf(stderr, "Error accepting connection: %s.\n", strerror(errno));
 		return -1;
@@ -107,8 +171,9 @@ int main() {
 
 		printf("%.*s", nbytes, IN_BUF);
 
-		const char* response = "HTTP/1.1 200 OK\r\n\r\n";
+		const char* response = handle_request(IN_BUF, nbytes) ? RESPONSE_OK : RESPONSE_NOT_FOUND;
 		printf("Sending response:\n%s", response);
+
 		if (send(client_fd, response, strlen(response), 0) < 0) {
 			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));
 		}

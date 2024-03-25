@@ -12,3 +12,6 @@ include_directories(app)
 
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+
+# Add compile-time definition without a value
+target_compile_definitions(${PROJECT_NAME} PRIVATE LOCAL_TEST)

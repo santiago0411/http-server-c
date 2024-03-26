@@ -56,6 +56,7 @@ HttpResponse handle_request(const char* buf, const int size)
 		goto free_and_return;
 	}
 
+	printf("Got a real path to return\n");
 	char* reply_str = malloc(reply_str_size + 1);
 	// +2 same logic as above
 	memcpy(reply_str, req.Path + word_start + 2, reply_str_size);

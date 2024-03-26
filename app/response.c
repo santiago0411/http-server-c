@@ -20,6 +20,7 @@ void response_set_status(HttpResponse* res, const uint16_t status)
             fprintf(stderr, "Unsupported status code %d\n", status);
             break;
     }
+    printf("Set status %d %s\n", res->StatusCode, res->StatusDesc);
 }
 
 const char* response_to_str(const HttpResponse* res, size_t* size)

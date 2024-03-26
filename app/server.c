@@ -31,6 +31,7 @@ HttpResponse handle_request(const char* buf, const int size)
 	const size_t path_size = strlen(req.Path);
 	if (path_size == 1) {
 		fprintf(stderr, "Cannot parse subpath out of '/'\n");
+		response_set_status(&res, 400);
 		goto free_and_return;
 	}
 
@@ -102,7 +103,7 @@ int main() {
 
 		printf("Received data:\n%.*s", nbytes, IN_BUF);
 
-		const HttpResponse res = handle_request(IN_BUF, nbytes);
+		HttpResponse res = handle_request(IN_BUF, nbytes);
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
 		printf("Sending response:\n%.*s", res_size, res_str);

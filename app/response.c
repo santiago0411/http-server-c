@@ -16,7 +16,7 @@ void response_set_status(HttpResponse* res, const uint16_t status)
             res->StatusDesc = "Not Found";
             break;
         default:
-            res->StatusCode = "OK";
+            res->StatusDesc = "OK";
             fprintf(stderr, "Unsupported status code %d\n", status);
             break;
     }

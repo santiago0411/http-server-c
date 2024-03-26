@@ -24,6 +24,7 @@ HttpResponse handle_request(const char* buf, const int size)
 	HttpRequest req;
 	HttpResponse res;
 	if (!request_parse(buf, size, &req)) {
+		printf("Failed to parse request!\n");
 		response_set_status(&res, 400);
 		goto free_and_return;
 	}
@@ -35,9 +36,11 @@ HttpResponse handle_request(const char* buf, const int size)
 		// No second '/' was found
 		if (path_size == 1) {
 			// Path was just "/" - Test 2: Respond with 200
+			printf("Matched Test 2\n");
 			response_set_status(&res, 200);
 		} else {
 			// Path was some other route - Test 3: Respond with 404
+			printf("Matched Test 3\n");
 			response_set_status(&res, 404);
 		}
 		goto free_and_return;

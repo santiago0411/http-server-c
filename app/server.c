@@ -30,8 +30,7 @@ HttpResponse handle_request(const char* buf, const int size)
 
 	const size_t path_size = strlen(req.Path);
 	if (path_size == 1) {
-		fprintf(stderr, "Cannot parse subpath out of '/'\n");
-		response_set_status(&res, 400);
+		response_set_status(&res, 200);
 		goto free_and_return;
 	}
 

@@ -1,140 +1,71 @@
 #include <stdio.h>
-#include <stdbool.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <string.h>
 #include <errno.h>
-#include <stdlib.h>
 #include <unistd.h>
 
+#include "net.h"
+#include "request.h"
+#include "response.h"
+
 #ifdef LOCAL_TEST
-#define PORT 30505
+	#define PORT 30505
 #else
-#define PORT 4221
+	#define PORT 4221
 #endif
 
 #define IN_BUF_SIZE 1024
 static char IN_BUF[IN_BUF_SIZE];
 
-static const char* RESPONSE_OK = "HTTP/1.1 200 OK\r\n\r\n";
-static const char* RESPONSE_NOT_FOUND = "HTTP/1.1 404 OK\r\n\r\n";
 
-typedef enum
-{
-	GET,
-	POST,
-} HttpMethod;
-
-typedef struct
-{
-	HttpMethod Method;
-	const char* Path;
-} HttpRequest;
-
-bool parse_request(const char* buf, const int size, HttpRequest* req)
-{
-	char* next_space = memchr(buf, ' ', size);
-	if (!next_space) {
-		fprintf(stderr, "Not enough bytes to parse HttpMethod from request\n");
-		return false;
-	}
-
-	int method_str_size = next_space - buf;
-	if (strncmp(buf, "GET", method_str_size) == 0) {
-		req->Method = GET;
-	} else if (strncmp(buf, "POST", method_str_size) == 0) {
-		req->Method = POST;
-	} else {
-		fprintf(stderr, "Unknown request method %.*s", method_str_size, buf);
-		return false;
-	}
-
-	if (method_str_size + 1 >= size) {
-		fprintf(stderr, "Not enough bytes to parse Path from request\n");
-		return;
-	}
-
-	buf += method_str_size + 1;
-	next_space = memchr(buf, ' ', size);
-	if (!next_space) {
-		fprintf(stderr, "Failed to parse Path from request\n");
-		return false;
-	}
-
-	int path_str_size = next_space - buf;
-	req->Path = calloc(path_str_size + 1, sizeof(char));
-	memcpy(req->Path, buf, path_str_size);
-	return true;
-}
-
-bool handle_request(const char* buf, const int size)
+HttpResponse handle_request(const char* buf, const int size)
 {
 	HttpRequest req;
-	// Only parsing method and path for now
-	parse_request(buf, size, &req);
-	// Only handling returning true when the path is '/' for now
-	const bool result = strcmp(req.Path, "/") == 0;
-	free(req.Path);
-	return result;
-}
-
-int accept_client(const int socket_fd)
-{
-	struct sockaddr_in client_addr;
-	const int client_addr_len = sizeof(client_addr);
-
-	const int client_fd = accept(socket_fd, (struct sockaddr *) &client_addr, (socklen_t*)&client_addr_len);
-	if (client_fd < 0) {
-		fprintf(stderr, "Error accepting connection: %s.\n", strerror(errno));
-		return -1;
+	HttpResponse res;
+	if (!request_parse(buf, size, &req)) {
+		response_set_status(&res, 400);
+		goto free_and_return;
 	}
 
-	const uint8_t octets[] = {
-		(client_addr.sin_addr.s_addr >> 0) & 0xFF,
-		(client_addr.sin_addr.s_addr >> 8) & 0xFF,
-		(client_addr.sin_addr.s_addr >> 16) & 0xFF,
-		(client_addr.sin_addr.s_addr >> 24) & 0xFF,
-	};
-
-	printf("Client %d.%d.%d.%d:%d connected!\n",
-		octets[0], octets[1],
-		octets[2], octets[3],
-		client_addr.sin_port
-	);
-
-	return client_fd;
-}
-
-int create_socket(const uint16_t port)
-{
-	const int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (server_fd == -1) {
-		fprintf(stderr, "Socket creation failed: %s...\n", strerror(errno));
-		return -1;
+	const size_t path_size = strlen(req.Path);
+	if (path_size == 1) {
+		fprintf(stderr, "Cannot parse subpath out of '/'\n");
+		goto free_and_return;
 	}
 
-	// Since the tester restarts your program quite often, setting REUSE_PORT
-	// ensures that we don't run into 'Address already in use' errors
-	int reuse = 1;
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
-		fprintf(stderr, "SO_REUSEPORT failed: %s \n", strerror(errno));
-		return -1;
+	// Path always starts with '/' so we can always + 1
+	const int word_start = first_index_of(req.Path + 1, path_size - 1, '/');
+	if (word_start == 0) {
+		fprintf(stderr, "No subpath found in Request.Path\n");
+		response_set_status(&res, 400);
+		goto free_and_return;
 	}
 
-	struct sockaddr_in serv_addr = {
-		.sin_family = AF_INET ,
-		.sin_port = htons(port),
-		.sin_addr = { htonl(INADDR_ANY) },
-	};
-
-	if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
-		fprintf(stderr, "Bind failed: %s \n", strerror(errno));
-		return -1;
+	// -2 for each '/'
+	// Example strlen(/echo/abc) = 9, word_start = 4
+	// 9 - 4 - 2 = 3 which is the length of 'abc'
+	const int reply_str_size = path_size - word_start - 2;
+	if (reply_str_size <= 0) {
+		fprintf(stderr, "Subpath in Request.Path was empty\n");
+		response_set_status(&res, 400);
+		goto free_and_return;
 	}
 
-	printf("Bound on port %d\n", port);
-	return server_fd;
+	char* reply_str = malloc(reply_str_size + 1);
+	// +2 same logic as above
+	memcpy(reply_str, req.Path + word_start + 2, reply_str_size);
+	reply_str[reply_str_size] = '\0';
+
+	response_set_status(&res, 200);
+	set_header_str(&res.Headers, "Content-Type", "text/plain");
+	set_header_i32(&res.Headers, "Content-Length", reply_str_size);
+	// This str is freed with the response
+	res.Content = reply_str;
+
+free_and_return:
+	request_destroy(&req);
+	return res;
 }
 
 int main() {
@@ -169,15 +100,18 @@ int main() {
 			break;
 		}
 
-		printf("%.*s", nbytes, IN_BUF);
+		printf("Received data:\n%.*s", nbytes, IN_BUF);
 
-		const char* response = handle_request(IN_BUF, nbytes) ? RESPONSE_OK : RESPONSE_NOT_FOUND;
-		printf("Sending response:\n%s", response);
+		const HttpResponse res = handle_request(IN_BUF, nbytes);
+		size_t res_size;
+		const char* res_str = response_to_str(&res, &res_size);
+		printf("Sending response:\n%.*s", res_size, res_str);
 
-		if (send(client_fd, response, strlen(response), 0) < 0) {
+		if (send(client_fd, res_str, res_size, 0) < 0) {
 			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));
 		}
 
+		response_destroy(&res);
 		printf("Response sent successfully\n");
 		// For the time being we only handle one connection
 		close(client_fd);

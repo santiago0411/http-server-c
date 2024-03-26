@@ -24,6 +24,8 @@ void response_set_status(HttpResponse* res, const uint16_t status)
 
 const char* response_to_str(const HttpResponse* res, size_t* size)
 {
+    printf("Stringifying response.\n");
+
     StringBuilder sb = sb_create(20);
 
     sb_append_str(&sb, "HTTP/1.1 ");

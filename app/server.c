@@ -36,6 +36,7 @@ HttpResponse handle_request(const char* buf, const int size)
 	const int word_start = first_index_of(req.Path + 1, path_size - 1, '/');
 	if (word_start == 0) {
 		// Path was just "/"
+		printf("Path was just '/'\n");
 		set_header_str(&res.Headers, "Content-Length", "1");
 		// Dark magic to deal with this dumb test case
 		res.Content = calloc(2, 1);
@@ -48,6 +49,7 @@ HttpResponse handle_request(const char* buf, const int size)
 	const int reply_str_size = path_size - word_start - 2;
 	if (reply_str_size <= 0) {
 		// Path only had one '/' so I guess we also send empty
+		printf("Path only had one '/'\n");
 		set_header_str(&res.Headers, "Content-Length", "1");
 		// Dark magic to deal with this dumb test case
 		res.Content = calloc(2, 1);
@@ -58,7 +60,6 @@ HttpResponse handle_request(const char* buf, const int size)
 	// +2 same logic as above
 	memcpy(reply_str, req.Path + word_start + 2, reply_str_size);
 	reply_str[reply_str_size] = '\0';
-
 
 	set_header_i32(&res.Headers, "Content-Length", reply_str_size);
 	// This str is freed with the response

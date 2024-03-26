@@ -15,6 +15,8 @@ int first_index_of(const char* buf, const int size, const char delim)
 
 void set_header_string(HeadersArray* headers, const char *header, const char *value, const bool copy_value)
 {
+    printf("Setting header - %s: %s\n", header, value);
+
     if (!copy_value) {
         ARRAY_APPEND(headers, ((Header){ .Header = header, .Value = value }));
         return;

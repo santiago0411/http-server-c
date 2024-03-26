@@ -20,13 +20,10 @@ void response_set_status(HttpResponse* res, const uint16_t status)
             fprintf(stderr, "Unsupported status code %d\n", status);
             break;
     }
-    printf("Set status %d %s\n", res->StatusCode, res->StatusDesc);
 }
 
 const char* response_to_str(const HttpResponse* res, size_t* size)
 {
-    printf("Stringifying response.\n");
-
     StringBuilder sb = sb_create(20);
 
     sb_append_str(&sb, "HTTP/1.1 ");

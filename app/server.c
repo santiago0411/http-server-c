@@ -72,12 +72,6 @@ HttpResponse handle_request(const Buffer* in)
 		goto free_and_return;
 	}
 
-	// Bad test case for stage 3
-	if (strcmp(req.Path, "/Coo/scooby-Monkey") == 0) {
-		response_set_status(&res, 404);
-		goto free_and_return;
-	}
-
 	const size_t path_size = strlen(req.Path);
 	// Path always starts with '/' and is null terminated so we can always + 1 safely
 	const int word_start = first_index_of(req.Path + 1, path_size - 1, '/');
@@ -92,6 +86,13 @@ HttpResponse handle_request(const Buffer* in)
 			printf("Matched Test 3\n");
 			response_set_status(&res, 404);
 		}
+		goto free_and_return;
+	}
+
+	if (strncmp(req.Path, "/echo", 5) != 0) {
+		// Path didn't start with "/echo" - Test 3: Respond with 404
+		printf("Matched Test 3\n");
+		response_set_status(&res, 404);
 		goto free_and_return;
 	}
 

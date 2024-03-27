@@ -63,8 +63,8 @@ ClientInfo* accept_client(const int server_socket)
 
     c->Socket = client_fd;
     c->RemotePort = client_addr.sin_port;
-    memset(c->RemoteAddress, sizeof(c->RemoteAddress), 0);
-    snprintf(c->RemoteAddress, sizeof(c->RemoteAddress), "%d.%d.%d.%d",
+    memset((void*)c->RemoteAddress, sizeof(c->RemoteAddress), 0);
+    snprintf((char*)c->RemoteAddress, sizeof(c->RemoteAddress), "%d.%d.%d.%d",
         octets[0], octets[1],
         octets[2], octets[3]);
 

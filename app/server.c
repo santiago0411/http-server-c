@@ -89,7 +89,7 @@ HttpResponse handle_request(const Buffer* in)
 		goto free_and_return;
 	}
 
-	if (strncmp(req.Path, "/echo", path_size) != 0) {
+	if (path_size >= 5 && strncmp(req.Path, "/echo", 5) != 0) {
 		// Path didn't start with "/echo" - Test 3: Respond with 404
 		printf("Matched Test 3\n");
 		response_set_status(&res, 404);
@@ -107,7 +107,7 @@ HttpResponse handle_request(const Buffer* in)
 		} else {
 			// Path was some other route
 			printf("Path was some other route\n");
-			response_set_status(&res, 400);
+			response_set_status(&res, 404);
 		}
 		goto free_and_return;
 	}

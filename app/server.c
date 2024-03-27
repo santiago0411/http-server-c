@@ -4,6 +4,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "net.h"
 #include "request.h"
@@ -15,15 +16,55 @@
 	#define PORT 4221
 #endif
 
-#define IN_BUF_SIZE 1024
-static char IN_BUF[IN_BUF_SIZE];
+#define BUF_SIZE 128
+static char IN_BUF[BUF_SIZE];
 
-
-HttpResponse handle_request(const char* buf, const int size)
+#define MAX_CLIENTS 5
+typedef struct
 {
-	HttpRequest req;
-	HttpResponse res;
-	if (!request_parse(buf, size, &req)) {
+	int Id;
+	ClientInfo* ClientInfo;
+	Buffer In;
+	Buffer Out;
+} Client;
+
+static Client Clients[MAX_CLIENTS];
+static pthread_t network_thread;
+static volatile bool network_running = false;
+
+void init_new_client(ClientInfo* info)
+{
+	Client* c = NULL;
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (!Clients[i].ClientInfo) {
+			c = &Clients[i];
+			c->Id = i;
+			break;
+		}
+	}
+
+	if (!c) {
+		printf("Cannot init new client, server full!\n");
+		return;
+	}
+
+	c->ClientInfo = info;
+	ARRAY_INIT(&c->In, BUF_SIZE);
+	ARRAY_INIT(&c->Out, BUF_SIZE);
+}
+
+void free_client(Client* c)
+{
+	ARRAY_FREE(&c->In);
+	ARRAY_FREE(&c->Out);
+	disconnect_client(c->ClientInfo);
+}
+
+HttpResponse handle_request(const Buffer* in)
+{
+	HttpRequest req = {0};
+	HttpResponse res = {0};
+	if (!request_parse(in, &req)) {
 		printf("Failed to parse request!\n");
 		response_set_status(&res, 400);
 		goto free_and_return;
@@ -73,6 +114,21 @@ free_and_return:
 	return res;
 }
 
+void* network_function(void* arg)
+{
+	network_running = true;
+	while (network_running) {
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			Client* c = &Clients[i];
+			if (c->ClientInfo) {
+
+			}
+		}
+	}
+
+	return NULL;
+}
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -83,25 +139,26 @@ int main() {
 		return 1;
 	}
 
-	const int connection_backlog = 5;
-	if (listen(socket_fd, connection_backlog) != 0) {
+	if (listen(socket_fd, MAX_CLIENTS) != 0) {
 		fprintf(stderr, "Listen failed: %s \n", strerror(errno));
+		close(socket_fd);
 		return 1;
 	}
 
+#ifdef MT
 	printf("Waiting for a client to connect...\n");
 
 	for (;;) {
-		const int client_fd = accept_client(socket_fd);
-		if (client_fd < 0) {
+		const ClientInfo* client = accept_client(socket_fd);
+		if (!client) {
 			continue;
 		}
 
-		int nbytes = recv(client_fd, IN_BUF, IN_BUF_SIZE, 0);
+		int nbytes = recv(client->Socket, IN_BUF, BUF_SIZE, 0);
 
 		if (nbytes < 0) {
 			fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
-			close(client_fd);
+			close(client->Socket);
 			break;
 		}
 
@@ -112,17 +169,95 @@ int main() {
 		const char* res_str = response_to_str(&res, &res_size);
 		printf("Sending response:\n%.*s", res_size, res_str);
 
-		if (send(client_fd, res_str, res_size, 0) < 0) {
+		if (send(client->Socket, res_str, res_size, 0) < 0) {
 			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));
 		}
 
 		response_destroy(&res);
 		printf("Response sent successfully\n");
 		// For the time being we only handle one connection
-		close(client_fd);
+		close(client->Socket);
 		break;
 	}
-
 	close(socket_fd);
+#elseif 0
+	if (pthread_create(&network_thread, NULL, network_function, NULL) != 0) {
+		fprintf(stderr, "Failed to start network thread\n");
+		close(socket_fd);
+		return 1;
+	}
+
+	for (;;) {
+		ClientInfo* info = accept_client(socket_fd);
+		if (info) {
+			init_new_client(info);
+		}
+		// TODO thread sleep
+	}
+#else
+	printf("Waiting for a client to connect...\n");
+
+	ClientInfo* client_info = accept_client(socket_fd);
+	if (!client_info) {
+		close(socket_fd);
+		return 0;
+	}
+
+	init_new_client(client_info);
+	// Only handling one connection so it's always gonna be 0
+	Client* client = &Clients[0];
+
+	fd_set read_fd_set;
+	FD_ZERO(&read_fd_set);
+	FD_SET(client_info->Socket, &read_fd_set);
+
+	struct timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 10000;
+
+	do
+	{
+		select(client_info->Socket + 1, &read_fd_set, NULL, NULL, &timeout);
+
+		if (!(FD_ISSET(client_info->Socket, &read_fd_set))) {
+			break;
+		}
+
+		int nbytes = recv(client_info->Socket, IN_BUF, BUF_SIZE, 0);
+
+		if (nbytes < 0) {
+			fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
+			goto exit;
+		}
+
+		if (nbytes == 0) {
+			break;
+		}
+
+		ARRAY_APPEND_MANY(&client->In, IN_BUF, nbytes);
+	} while (true);
+
+	if (client->In.Count > 0) {
+		printf("Received data:\n%.*s", (int)client->In.Count, client->In.Data);
+
+		HttpResponse res = handle_request(&client->In);
+		size_t res_size;
+		const char* res_str = response_to_str(&res, &res_size);
+		printf("Sending response:\n%.*s", res_size, res_str);
+
+		if (send(client_info->Socket, res_str, res_size, 0) < 0) {
+			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));
+		}
+
+		response_destroy(&res);
+		printf("Response sent successfully\n");
+	}
+
+exit:
+	// For the time being we only handle one connection
+	free_client(client);
+	close(socket_fd);
+#endif
+
 	return 0;
 }

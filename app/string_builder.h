@@ -7,7 +7,7 @@
 typedef struct
 {
     char* Data;
-    size_t Size;
+    size_t Count;
     size_t Capacity;
 } StringBuilder;
 

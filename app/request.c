@@ -4,8 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool request_parse(const char* buf, const int size, HttpRequest* req)
+bool request_parse(const Buffer* in, HttpRequest* req)
 {
+    char* buf = in->Data;
+    int size = in->Count;
+
     const int method_str_size = first_index_of(buf, size, ' ');
     if (method_str_size == 0) {
         fprintf(stderr, "Not enough bytes to parse Method from Request!\n");
@@ -23,6 +26,7 @@ bool request_parse(const char* buf, const int size, HttpRequest* req)
 
     // We know there is a space after the method str so it's safe to do + 1
     buf += method_str_size + 1;
+    size -= method_str_size + 1;
 
     const int path_str_size = first_index_of(buf, size, ' ');
     if (path_str_size == 0) {

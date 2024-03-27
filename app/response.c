@@ -33,7 +33,7 @@ const char* response_to_str(const HttpResponse* res, size_t* size)
     sb_append_str(&sb, HTTP_NEW_LINE);
 
     for (size_t i = 0; i < res->Headers.Count; i++) {
-        const Header* h = &res->Headers.Items[i];
+        const Header* h = &res->Headers.Data[i];
         sb_append_str(&sb, h->Header);
         sb_append_str(&sb, ": ");
         sb_append_str(&sb, h->Value);
@@ -49,7 +49,7 @@ const char* response_to_str(const HttpResponse* res, size_t* size)
     // End
     sb_append_str(&sb, HTTP_NEW_LINE);
 
-    *size = sb.Size;
+    *size = sb.Count;
     return sb.Data;
 }
 
@@ -58,7 +58,7 @@ void response_destroy(HttpResponse* res)
     for (size_t i = 0; i < res->Headers.Count; i++) {
         // For now the header names are all static constants so we never copy them
         // The values we always copy when setting them so we need to free them
-        free((void*)res->Headers.Items[i].Value);
+        free((void*)res->Headers.Data[i].Value);
     }
     ARRAY_FREE(&res->Headers);
     free((void*)res->Content);

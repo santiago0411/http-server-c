@@ -11,7 +11,7 @@ typedef struct
     const char* Path;
 } HttpRequest;
 
-bool request_parse(const char* buf, int size, HttpRequest* req);
+bool request_parse(const Buffer* in, HttpRequest* req);
 void request_destroy(const HttpRequest* req);
 
 #endif //REQUEST_H

@@ -1,10 +1,13 @@
 #include "net.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 int create_socket(const uint16_t port)
 {
@@ -37,15 +40,15 @@ int create_socket(const uint16_t port)
     return server_fd;
 }
 
-int accept_client(const int socket_fd)
+ClientInfo* accept_client(const int server_socket)
 {
     struct sockaddr_in client_addr;
     const int client_addr_len = sizeof(client_addr);
 
-    const int client_fd = accept(socket_fd, (struct sockaddr *) &client_addr, (socklen_t*)&client_addr_len);
+    const int client_fd = accept(server_socket, (struct sockaddr *) &client_addr, (socklen_t*)&client_addr_len);
     if (client_fd < 0) {
         fprintf(stderr, "Error accepting connection: %s.\n", strerror(errno));
-        return -1;
+        return NULL;
     }
 
     const uint8_t octets[] = {
@@ -55,11 +58,22 @@ int accept_client(const int socket_fd)
         (client_addr.sin_addr.s_addr >> 24) & 0xFF,
     };
 
-    printf("Client %d.%d.%d.%d:%d connected!\n",
-        octets[0], octets[1],
-        octets[2], octets[3],
-        client_addr.sin_port
-    );
+    ClientInfo* c = malloc(sizeof(ClientInfo));
+    assert(c && "Out of ram lol");
 
-    return client_fd;
+    c->Socket = client_fd;
+    c->RemotePort = client_addr.sin_port;
+    memset(c->RemoteAddress, sizeof(c->RemoteAddress), 0);
+    snprintf(c->RemoteAddress, sizeof(c->RemoteAddress), "%d.%d.%d.%d",
+        octets[0], octets[1],
+        octets[2], octets[3]);
+
+    printf("Client %s:%d connected!\n", c->RemoteAddress, c->RemotePort);
+    return c;
+}
+
+void disconnect_client(ClientInfo* client)
+{
+    close(client->Socket);
+    free(client);
 }

@@ -153,7 +153,7 @@ void try_read_data(Client* c)
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 10000; // 10ms
+	timeout.tv_usec = 10;
 
 	do
 	{

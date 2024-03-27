@@ -74,6 +74,8 @@ ClientInfo* accept_client(const int server_socket)
 void disconnect_client(ClientInfo* client)
 {
     if (client) {
+        printf("Disconnecting client %s:%d\n",
+            client->RemoteAddress, client->RemotePort);
         close(client->Socket);
         free(client);
     }

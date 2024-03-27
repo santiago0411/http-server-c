@@ -55,11 +55,6 @@ const char* response_to_str(const HttpResponse* res, size_t* size)
 
 void response_destroy(HttpResponse* res)
 {
-    for (size_t i = 0; i < res->Headers.Count; i++) {
-        // For now the header names are all static constants so we never copy them
-        // The values we always copy when setting them so we need to free them
-        free((void*)res->Headers.Data[i].Value);
-    }
-    ARRAY_FREE(&res->Headers);
+    free_headers(&res->Headers);
     free((void*)res->Content);
 }

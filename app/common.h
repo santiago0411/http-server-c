@@ -13,7 +13,7 @@
         if ((arr)->Capacity == 0) { \
             (arr)->Capacity = ARRAY_INIT_CAP >= required ? ARRAY_INIT_CAP : required; \
         } else { \
-            (arr)->Capacity = ((arr)->Capacity * 2) >= ((arr)->Count + (required)) ? ((arr)->Capacity * 2) : required; \
+            (arr)->Capacity = (arr)->Capacity * 2 >= (arr)->Count + (required) ? (arr)->Capacity * 2 : (arr)->Count + (required); \
         } \
         (arr)->Data = realloc((arr)->Data, (arr)->Capacity * sizeof(*(arr)->Data)); \
         assert((arr)->Data && "Out of ram lol"); \
@@ -76,7 +76,9 @@ typedef struct
 } Buffer;
 
 int first_index_of(const char* buf, int size, char delim);
+const char* get_header_value(const HeadersArray* headers, const char* header);
 void set_header_str(HeadersArray* headers, const char* header, const char* value);
+void set_header_str_len(HeadersArray* headers, const char* header, size_t header_len, const char* value, size_t value_len);
 void set_header_i32(HeadersArray* headers, const char* header, int32_t value);
-
+void free_headers(HeadersArray* headers);
 #endif //COMMON_H

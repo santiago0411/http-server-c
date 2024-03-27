@@ -9,6 +9,8 @@ typedef struct
 {
     HttpMethod Method;
     const char* Path;
+    const HeadersArray Headers;
+    const char* Body;
 } HttpRequest;
 
 bool request_parse(const Buffer* in, HttpRequest* req);

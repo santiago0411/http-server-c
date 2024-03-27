@@ -73,6 +73,29 @@ HttpResponse handle_request(const Buffer* in)
 	}
 
 	const size_t path_size = strlen(req.Path);
+
+	if (strncmp(req.Path, "/user-agent", path_size) == 0) {
+		printf("Matched Test 5\n");
+		// Test 5: Parse headers
+		const char* value = get_header_value(&req.Headers, "User-Agent");
+		if (!value) {
+			response_set_status(&res, 400);
+			goto free_and_return;
+		}
+		// This str is freed with the response
+		response_set_status(&res, 200);
+		res.Content = malloc(strlen(value) + 1);
+		strcpy((char*)res.Content, value);
+		goto free_and_return;
+	}
+
+	if (strncmp(req.Path, "/echo", path_size) != 0) {
+		// Path didn't start with "/echo" - Test 3: Respond with 404
+		printf("Matched Test 3\n");
+		response_set_status(&res, 404);
+		goto free_and_return;
+	}
+
 	// Path always starts with '/' and is null terminated so we can always + 1 safely
 	const int word_start = first_index_of(req.Path + 1, path_size - 1, '/');
 	if (word_start == 0) {
@@ -82,17 +105,10 @@ HttpResponse handle_request(const Buffer* in)
 			printf("Matched Test 2\n");
 			response_set_status(&res, 200);
 		} else {
-			// Path was some other route - Test 3: Respond with 404
-			printf("Matched Test 3\n");
-			response_set_status(&res, 404);
+			// Path was some other route
+			printf("Path was some other route\n");
+			response_set_status(&res, 400);
 		}
-		goto free_and_return;
-	}
-
-	if (strncmp(req.Path, "/echo", 5) != 0) {
-		// Path didn't start with "/echo" - Test 3: Respond with 404
-		printf("Matched Test 3\n");
-		response_set_status(&res, 404);
 		goto free_and_return;
 	}
 

@@ -155,6 +155,7 @@ void try_read_data(Client* c)
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 10;
 
+#ifdef SELECT
 	do
 	{
 		select(c->ClientInfo->Socket + 1, &read_fd_set, NULL, NULL, &timeout);
@@ -176,6 +177,18 @@ void try_read_data(Client* c)
 
 		ARRAY_APPEND_MANY(&c->In, IN_BUF, nbytes);
 	} while (true);
+#else
+	ARRAY_INIT(&c->In, BUF_SIZE);
+	int nbytes = recv(c->ClientInfo->Socket, c->In.Data, c->In.Capacity, 0);
+
+	if (nbytes < 0) {
+		fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
+		return;
+	}
+
+	c->In.Count += nbytes;
+#endif
+
 
 	if (c->In.Count > 0) {
 		printf("Received data from client %s:%u (%d):\n\n%.*s",

@@ -51,8 +51,9 @@
 
 typedef enum
 {
-    GET,
-    POST,
+    METHOD_GET,
+    METHOD_HEAD,
+    METHOD_POST,
 } HttpMethod;
 
 typedef struct

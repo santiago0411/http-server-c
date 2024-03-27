@@ -20,6 +20,7 @@
 
 #define BUF_SIZE 1024
 static char IN_BUF[BUF_SIZE];
+pthread_mutex_t IN_BUF_MUTEX = PTHREAD_MUTEX_INITIALIZER;
 
 #define MAX_CLIENTS 5
 typedef struct
@@ -45,7 +46,8 @@ Client* init_new_client(ClientInfo* info)
 	}
 
 	if (!c) {
-		printf("Cannot init new client, server full!\n");
+		printf("Cannot init new client %s:%u, server full!\n", info->RemoteAddress, info->RemotePort);
+		disconnect_client(info);
 		return NULL;
 	}
 
@@ -64,25 +66,25 @@ void free_client(Client* c)
 	c->ClientInfo = NULL;
 }
 
-HttpResponse handle_request(const Buffer* in)
+HttpResponse handle_request(const HttpRequest* req)
 {
-	HttpRequest req = {0};
 	HttpResponse res = {0};
-	if (!request_parse(in, &req)) {
-		printf("Failed to parse request!\n");
-		response_set_status(&res, 400);
-		goto free_and_return;
+	
+	if (req->Method == METHOD_HEAD) {
+		// We don't really handle files for now, so no headers in response
+		response_set_status(&res, 200);
+		return res;
 	}
 
-	const size_t path_size = strlen(req.Path);
+	const size_t path_size = strlen(req->Path);
 
-	if (path_size > 1 && strncmp(req.Path, "/user-agent", path_size) == 0) {
+	if (path_size > 1 && strncmp(req->Path, "/user-agent", path_size) == 0) {
 		printf("Matched Test 5\n");
 		// Test 5: Parse headers
-		const char* value = get_header_value(&req.Headers, "User-Agent");
+		const char* value = get_header_value(&req->Headers, "User-Agent");
 		if (!value) {
 			response_set_status(&res, 400);
-			goto free_and_return;
+			return res;
 		}
 		const size_t value_len = strlen(value);
 		// This str is freed with the response
@@ -92,18 +94,18 @@ HttpResponse handle_request(const Buffer* in)
 
 		res.Content = malloc(value_len + 1);
 		strcpy((char*)res.Content, value);
-		goto free_and_return;
+		return res;
 	}
 
-	if (path_size >= 5 && strncmp(req.Path, "/echo", 5) != 0) {
+	if (path_size >= 5 && strncmp(req->Path, "/echo", 5) != 0) {
 		// Path didn't start with "/echo" - Test 3: Respond with 404
 		printf("Matched Test 3\n");
 		response_set_status(&res, 404);
-		goto free_and_return;
+		return res;
 	}
 
 	// Path always starts with '/' and is null terminated so we can always + 1 safely
-	const int word_start = first_index_of(req.Path + 1, path_size - 1, '/');
+	const int word_start = first_index_of(req->Path + 1, path_size - 1, '/');
 	if (word_start == 0) {
 		// No second '/' was found
 		if (path_size == 1) {
@@ -115,7 +117,7 @@ HttpResponse handle_request(const Buffer* in)
 			printf("Path was some other route\n");
 			response_set_status(&res, 404);
 		}
-		goto free_and_return;
+		return res;
 	}
 
 	// -2 for each '/'
@@ -125,13 +127,13 @@ HttpResponse handle_request(const Buffer* in)
 	if (reply_str_size <= 0) {
 		// Path only had one '/' - Idk what we do here honestly
 		response_set_status(&res, 400);
-		goto free_and_return;
+		return res;
 	}
 
 	// Test 4: Respond with content
 	char* reply_str = malloc(reply_str_size + 1);
 	// +2 same logic as above
-	memcpy(reply_str, req.Path + word_start + 2, reply_str_size);
+	memcpy(reply_str, req->Path + word_start + 2, reply_str_size);
 	reply_str[reply_str_size] = '\0';
 
 	response_set_status(&res, 200);
@@ -139,10 +141,13 @@ HttpResponse handle_request(const Buffer* in)
 	set_header_i32(&res.Headers, "Content-Length", reply_str_size);
 	// This str is freed with the response
 	res.Content = reply_str;
-
-free_and_return:
-	request_destroy(&req);
+	
 	return res;
+}
+
+bool is_valid_http_request(const Buffer* in)
+{
+	return in->Count > 4 && strncmp(in->Data + (in->Count - 4), "\r\n\r\n", 4) == 0;
 }
 
 void try_read_data(Client* c)
@@ -153,18 +158,22 @@ void try_read_data(Client* c)
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 10;
+	timeout.tv_usec = 1000;
 
-#ifdef SELECT
-	do
-	{
+	do {
 		select(c->ClientInfo->Socket + 1, &read_fd_set, NULL, NULL, &timeout);
 
 		if (!(FD_ISSET(c->ClientInfo->Socket, &read_fd_set))) {
 			break;
 		}
 
-		int nbytes = recv(c->ClientInfo->Socket, IN_BUF, BUF_SIZE, 0);
+		pthread_mutex_lock(&IN_BUF_MUTEX);
+		const int nbytes = recv(c->ClientInfo->Socket, IN_BUF, BUF_SIZE, 0);
+		printf("Received %d bytes\n", nbytes);
+		if (nbytes > 0) {
+			ARRAY_APPEND_MANY(&c->In, IN_BUF, nbytes);
+		}
+		pthread_mutex_unlock(&IN_BUF_MUTEX);
 
 		if (nbytes < 0) {
 			fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
@@ -174,28 +183,22 @@ void try_read_data(Client* c)
 		if (nbytes == 0) {
 			break;
 		}
-
-		ARRAY_APPEND_MANY(&c->In, IN_BUF, nbytes);
 	} while (true);
-#else
-	ARRAY_INIT(&c->In, BUF_SIZE);
-	int nbytes = recv(c->ClientInfo->Socket, c->In.Data, c->In.Capacity, 0);
 
-	if (nbytes < 0) {
-		fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
-		return;
-	}
-
-	c->In.Count += nbytes;
-#endif
-
-
-	if (c->In.Count > 0) {
+	if (is_valid_http_request(&c->In)) {
 		printf("Received data from client %s:%u (%d):\n\n%.*s",
 			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)c->In.Count, c->In.Data);
 
-		HttpResponse res = handle_request(&c->In);
+		HttpRequest req = {0};
+		if (!request_parse(&c->In, &req)) {
+			printf("Failed to parse request!\n");
+			free_client(c);
+			return;
+		}
+
+		HttpResponse res = handle_request(&req);
+		c->In.Count = 0;
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
 
@@ -208,17 +211,29 @@ void try_read_data(Client* c)
 				c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id, strerror(errno));
 		}
 
+		printf("Response sent successfully.\n");
+
+		const char* connection = get_header_value(&req.Headers, "Connection");
+		if (!connection || strcmp(connection, "keep-alive") != 0) {
+			free_client(c);
+		}
 		response_destroy(&res);
+		request_destroy(&req);
 		free((void*)res_str);
-		printf("Response sent successfully\n");
 	}
 }
 
 void* network_function(void* arg)
 {
+	struct timespec ts;
+	ts.tv_sec = 0;
+	ts.tv_nsec = 10 * 1000000;
 	Client* c = arg;
-	try_read_data(c);
-	free_client(c);
+
+	while (c->ClientInfo) {
+		try_read_data(c);
+		nanosleep(&ts, NULL);
+	}
 	return NULL;
 }
 
@@ -238,19 +253,21 @@ int main() {
 		return 1;
 	}
 
-#ifndef SINGLE_CLIENT
 	for (;;) {
 		ClientInfo* info = accept_client(socket_fd);
 		if (!info) {
 			break; // Server is full
 		}
 		Client* c = init_new_client(info);
-		pthread_attr_t attr;
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-		if (pthread_create(&c->Thread, &attr, network_function, c) != 0) {
-			fprintf(stderr, "Failed to start network thread\n");
-			close(socket_fd);
-			return 1;
+		if (c) {
+			pthread_attr_t attr;
+			// Detached means we don't have to join it when it's done
+			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+			if (pthread_create(&c->Thread, &attr, network_function, c) != 0) {
+				fprintf(stderr, "Failed to start network thread\n");
+				close(socket_fd);
+				return 1;
+			}
 		}
 	}
 
@@ -259,69 +276,5 @@ int main() {
 	}
 
 	close(socket_fd);
-#else
-	printf("Waiting for a client to connect...\n");
-
-	ClientInfo* client_info = accept_client(socket_fd);
-	if (!client_info) {
-		close(socket_fd);
-		return 0;
-	}
-
-	Client* client = init_new_client(client_info);
-
-	fd_set read_fd_set;
-	FD_ZERO(&read_fd_set);
-	FD_SET(client_info->Socket, &read_fd_set);
-
-	struct timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 10000; // 10ms
-
-	do
-	{
-		select(client_info->Socket + 1, &read_fd_set, NULL, NULL, &timeout);
-
-		if (!(FD_ISSET(client_info->Socket, &read_fd_set))) {
-			break;
-		}
-
-		int nbytes = recv(client_info->Socket, IN_BUF, BUF_SIZE, 0);
-
-		if (nbytes < 0) {
-			fprintf(stderr, "Failed to read bytes: %s", strerror(errno));
-			goto exit;
-		}
-
-		if (nbytes == 0) {
-			break;
-		}
-
-		ARRAY_APPEND_MANY(&client->In, IN_BUF, nbytes);
-	} while (true);
-
-	if (client->In.Count > 0) {
-		printf("Received data:\n\n%.*s", (int)client->In.Count, client->In.Data);
-
-		HttpResponse res = handle_request(&client->In);
-		size_t res_size;
-		const char* res_str = response_to_str(&res, &res_size);
-		printf("Sending response:\n\n%.*s", (int)res_size, res_str);
-
-		if (send(client_info->Socket, res_str, res_size, 0) < 0) {
-			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));
-		}
-
-		response_destroy(&res);
-		free((void*)res_str);
-		printf("Response sent successfully\n");
-	}
-
-exit:
-	// For the time being we only handle one connection
-	free_client(client);
-	close(socket_fd);
-#endif
-
 	return 0;
 }

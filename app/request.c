@@ -16,9 +16,11 @@ bool request_parse(const Buffer* in, HttpRequest* req)
     }
 
     if (strncmp(buf, "GET", method_str_size) == 0) {
-        req->Method = GET;
+        req->Method = METHOD_GET;
+    } else if (strncmp(buf, "HEAD", method_str_size) == 0) {
+        req->Method = METHOD_HEAD;
     } else if (strncmp(buf, "POST", method_str_size) == 0) {
-        req->Method = POST;
+        req->Method = METHOD_POST;
     } else {
         fprintf(stderr, "Unknown request method %.*s", method_str_size, buf);
         return false;

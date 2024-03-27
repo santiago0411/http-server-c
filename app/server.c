@@ -82,9 +82,13 @@ HttpResponse handle_request(const Buffer* in)
 			response_set_status(&res, 400);
 			goto free_and_return;
 		}
+		const size_t value_len = strlen(value);
 		// This str is freed with the response
 		response_set_status(&res, 200);
-		res.Content = malloc(strlen(value) + 1);
+		set_header_str(&res.Headers, "Content-Type", "text/plain");
+		set_header_i32(&res.Headers, "Content-Length", value_len);
+
+		res.Content = malloc(value_len + 1);
 		strcpy((char*)res.Content, value);
 		goto free_and_return;
 	}

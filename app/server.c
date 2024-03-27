@@ -251,7 +251,7 @@ int main() {
 		HttpResponse res = handle_request(&client->In);
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
-		printf("Sending response:\n%.*s", res_size, res_str);
+		printf("Sending response:\n%.*s", (int)res_size, res_str);
 
 		if (send(client_info->Socket, res_str, res_size, 0) < 0) {
 			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));

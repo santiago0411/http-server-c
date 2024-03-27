@@ -68,12 +68,14 @@ ClientInfo* accept_client(const int server_socket)
         octets[0], octets[1],
         octets[2], octets[3]);
 
-    printf("Client %s:%d connected!\n", c->RemoteAddress, c->RemotePort);
+    printf("Client %s:%u connected!\n", c->RemoteAddress, c->RemotePort);
     return c;
 }
 
 void disconnect_client(ClientInfo* client)
 {
-    close(client->Socket);
-    free(client);
+    if (client) {
+        close(client->Socket);
+        free(client);
+    }
 }

@@ -26,15 +26,14 @@ typedef struct
 {
 	int Id;
 	ClientInfo* ClientInfo;
+	pthread_t Thread;
 	Buffer In;
 	Buffer Out;
 } Client;
 
 static Client Clients[MAX_CLIENTS];
-static pthread_t network_thread;
-static volatile bool network_running = false;
 
-void init_new_client(ClientInfo* info)
+Client* init_new_client(ClientInfo* info)
 {
 	Client* c = NULL;
 	for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -47,12 +46,14 @@ void init_new_client(ClientInfo* info)
 
 	if (!c) {
 		printf("Cannot init new client, server full!\n");
-		return;
+		return NULL;
 	}
 
 	c->ClientInfo = info;
 	ARRAY_INIT(&c->In, BUF_SIZE);
 	ARRAY_INIT(&c->Out, BUF_SIZE);
+	printf("Client %s:%u (%d) connected successfully!\n", info->RemoteAddress, info->RemotePort, c->Id);
+	return c;
 }
 
 void free_client(Client* c)
@@ -208,26 +209,10 @@ void try_send_data(Client* c)
 
 void* network_function(void* arg)
 {
-	struct timespec ts;
-	ts.tv_sec = 0;
-	ts.tv_nsec = 10 * 1000000; // 10ms
-
-	network_running = true;
-	while (network_running) {
-		for (int i = 0; i < MAX_CLIENTS; i++) {
-			Client* c = &Clients[i];
-			if (c->ClientInfo) {
-				try_read_data(c);
-				try_send_data(c);
-				free_client(c);
-			}
-		}
-
-		if (nanosleep(&ts, NULL) < 0) {
-			break;
-		}
-	}
-
+	Client* c = arg;
+	try_read_data(c);
+	try_send_data(c);
+	free_client(c);
 	return NULL;
 }
 
@@ -248,30 +233,25 @@ int main() {
 	}
 
 #ifndef SINGLE_CLIENT
-	if (pthread_create(&network_thread, NULL, network_function, NULL) != 0) {
-		fprintf(stderr, "Failed to start network thread\n");
-		close(socket_fd);
-		return 1;
-	}
-
 	for (;;) {
 		ClientInfo* info = accept_client(socket_fd);
 		if (!info) {
 			break; // Server is full
 		}
-		init_new_client(info);
-	}
-
-	while (network_running) {
-		struct timespec ts;
-		ts.tv_sec = 0;
-		ts.tv_nsec = 20 * 1000000; // 20ms
-		nanosleep(&ts, NULL);
+		Client* c = init_new_client(info);
+		pthread_attr_t attr;
+		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+		if (pthread_create(&c->Thread, &attr, network_function, c) != 0) {
+			fprintf(stderr, "Failed to start network thread\n");
+			close(socket_fd);
+			return 1;
+		}
 	}
 
 	for (int i = 0 ; i < MAX_CLIENTS; i++) {
 		free_client(&Clients[i]);
 	}
+
 	close(socket_fd);
 #else
 	printf("Waiting for a client to connect...\n");
@@ -282,9 +262,7 @@ int main() {
 		return 0;
 	}
 
-	init_new_client(client_info);
-	// Only handling one connection so it's always gonna be 0
-	Client* client = &Clients[0];
+	Client* client = init_new_client(client_info);
 
 	fd_set read_fd_set;
 	FD_ZERO(&read_fd_set);

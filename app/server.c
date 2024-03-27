@@ -18,7 +18,7 @@
 	#define PORT 4221
 #endif
 
-#define BUF_SIZE 128
+#define BUF_SIZE 1024
 static char IN_BUF[BUF_SIZE];
 
 #define MAX_CLIENTS 5

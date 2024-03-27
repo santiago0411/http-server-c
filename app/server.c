@@ -75,7 +75,7 @@ HttpResponse handle_request(const Buffer* in)
 
 	const size_t path_size = strlen(req.Path);
 
-	if (strncmp(req.Path, "/user-agent", path_size) == 0) {
+	if (path_size > 1 && strncmp(req.Path, "/user-agent", path_size) == 0) {
 		printf("Matched Test 5\n");
 		// Test 5: Parse headers
 		const char* value = get_header_value(&req.Headers, "User-Agent");
@@ -177,15 +177,15 @@ void try_read_data(Client* c)
 	} while (true);
 
 	if (c->In.Count > 0) {
-		printf("Received data from client %s:%u:\n%.*s",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort,
+		printf("Received data from client %s:%u (%d):\n%.*s",
+			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)c->In.Count, c->In.Data);
 
 		HttpResponse res = handle_request(&c->In);
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
-		printf("Queing response to client %s:%u:\n%.*s",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort,
+		printf("Queing response to client %s:%u (%d):\n%.*s",
+			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)res_size, res_str);
 
 		ARRAY_APPEND_MANY(&c->Out, res_str, res_size);
@@ -197,12 +197,12 @@ void try_read_data(Client* c)
 void try_send_data(Client* c)
 {
 	if (send(c->ClientInfo->Socket, c->Out.Data, c->Out.Count, 0) >= 0) {
-		printf("Response sent to client %s:%u successfully\n\n",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort);
+		printf("Response sent to client %s:%u (%d) successfully\n\n",
+			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id);
 		c->Out.Count = 0;
 	} else {
-		fprintf(stderr, "Failed to send response to client %s:%u: %s\n\n",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, strerror(errno));
+		fprintf(stderr, "Failed to send response to client %s:%u (%d): %s\n\n",
+			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id, strerror(errno));
 	}
 }
 

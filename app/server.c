@@ -51,7 +51,7 @@ Client* init_new_client(ClientInfo* info)
 
 	c->ClientInfo = info;
 	ARRAY_INIT(&c->In, BUF_SIZE);
-	ARRAY_INIT(&c->Out, BUF_SIZE);
+	// ARRAY_INIT(&c->Out, BUF_SIZE); // Unused for now
 	printf("Client %s:%u (%d) connected successfully!\n", info->RemoteAddress, info->RemotePort, c->Id);
 	return c;
 }
@@ -178,32 +178,26 @@ void try_read_data(Client* c)
 	} while (true);
 
 	if (c->In.Count > 0) {
-		printf("Received data from client %s:%u (%d):\n%.*s",
+		printf("Received data from client %s:%u (%d):\n\n%.*s",
 			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)c->In.Count, c->In.Data);
 
 		HttpResponse res = handle_request(&c->In);
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
-		printf("Queing response to client %s:%u (%d):\n%.*s",
+
+		printf("Sending response to client %s:%u (%d):\n\n%.*s",
 			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)res_size, res_str);
 
-		ARRAY_APPEND_MANY(&c->Out, res_str, res_size);
+		if (send(c->ClientInfo->Socket, res_str, res_size, 0) < 0) {
+			fprintf(stderr, "Failed to send response to client %s:%u (%d): %s\n\n",
+				c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id, strerror(errno));
+		}
+
 		response_destroy(&res);
 		free((void*)res_str);
-	}
-}
-
-void try_send_data(Client* c)
-{
-	if (send(c->ClientInfo->Socket, c->Out.Data, c->Out.Count, 0) >= 0) {
-		printf("Response sent to client %s:%u (%d) successfully\n\n",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id);
-		c->Out.Count = 0;
-	} else {
-		fprintf(stderr, "Failed to send response to client %s:%u (%d): %s\n\n",
-			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id, strerror(errno));
+		printf("Response sent successfully\n");
 	}
 }
 
@@ -211,7 +205,6 @@ void* network_function(void* arg)
 {
 	Client* c = arg;
 	try_read_data(c);
-	try_send_data(c);
 	free_client(c);
 	return NULL;
 }
@@ -270,7 +263,7 @@ int main() {
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 10 * 1000000;
+	timeout.tv_usec = 10000; // 10ms
 
 	do
 	{
@@ -295,12 +288,12 @@ int main() {
 	} while (true);
 
 	if (client->In.Count > 0) {
-		printf("Received data:\n%.*s", (int)client->In.Count, client->In.Data);
+		printf("Received data:\n\n%.*s", (int)client->In.Count, client->In.Data);
 
 		HttpResponse res = handle_request(&client->In);
 		size_t res_size;
 		const char* res_str = response_to_str(&res, &res_size);
-		printf("Sending response:\n%.*s", (int)res_size, res_str);
+		printf("Sending response:\n\n%.*s", (int)res_size, res_str);
 
 		if (send(client_info->Socket, res_str, res_size, 0) < 0) {
 			fprintf(stderr, "Failed to send response: %s\n", strerror(errno));

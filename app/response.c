@@ -31,6 +31,9 @@ void response_set_status(const HttpResponse res, const uint16_t status)
         case 200:
             res->StatusDesc = "OK";
             break;
+        case 201:
+            res->StatusDesc = "Created";
+            break;
         case 400:
             res->StatusDesc = "Bad Request";
             break;

@@ -101,7 +101,7 @@ void write_file_from_body(const HttpRequest* req, HttpResponse res)
 	};
 	write_file(full_file_path, &buf);
 	free((void*)full_file_path);
-	response_set_status(res, 200);
+	response_set_status(res, 201);
 }
 
 void serve_file(const HttpRequest* req, HttpResponse res)

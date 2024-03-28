@@ -67,7 +67,9 @@ bool request_parse(const Buffer* in, HttpRequest* req)
             break;
         }
 
-        set_header_str_len((HeadersArray*)&req->Headers, header, header_len, value, value_len);
+        // Do NOT inline because macro will call multiple times
+        const Header h = create_header_str_len(header, header_len, value, value_len);
+        ARRAY_APPEND((HeadersArray*)&req->Headers, h);
     }
 
     // Advance \r\n corresponding to either line between headers and body or request end

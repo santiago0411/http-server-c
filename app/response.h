@@ -6,17 +6,15 @@
 #include "common.h"
 #include "string_builder.h"
 
-typedef struct
-{
-    // const char* HttpVersion; Not used for now it's always HTTP/1.1
-    uint16_t StatusCode;
-    const char* StatusDesc;
-    HeadersArray Headers;
-    const char* Content;
-} HttpResponse;
+struct HttpResponse_T;
+typedef struct HttpResponse_T* HttpResponse;
 
-void response_set_status(HttpResponse* res, uint16_t status);
-const char* response_to_str(const HttpResponse* res, size_t* size);
-void response_destroy(HttpResponse* res);
+void response_create(HttpResponse* res);
+void response_destroy(HttpResponse res);
+void response_set_status(HttpResponse res, uint16_t status);
+void response_set_content(HttpResponse res, const char* content, size_t size);
+void response_set_header(HttpResponse res, Header header);
+const char* response_to_str(HttpResponse res, size_t* size);
+
 
 #endif //RESPONSE_H

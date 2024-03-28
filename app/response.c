@@ -2,7 +2,29 @@
 
 #include <stdio.h>
 
-void response_set_status(HttpResponse* res, const uint16_t status)
+struct HttpResponse_T
+{
+    // const char* HttpVersion; Not used for now it's always HTTP/1.1
+    uint16_t StatusCode;
+    const char* StatusDesc;
+    HeadersArray Headers;
+    size_t ContentLength;
+    const char* Content;
+} ;
+
+void response_create(HttpResponse* res)
+{
+    *res = calloc(sizeof(struct HttpResponse_T), 1);
+}
+
+void response_destroy(HttpResponse res)
+{
+    free_headers(&res->Headers);
+    free((void*)res->Content);
+    free((void*)res);
+}
+
+void response_set_status(const HttpResponse res, const uint16_t status)
 {
     res->StatusCode = status;
     switch (status) {
@@ -22,7 +44,18 @@ void response_set_status(HttpResponse* res, const uint16_t status)
     }
 }
 
-const char* response_to_str(const HttpResponse* res, size_t* size)
+void response_set_content(const HttpResponse res, const char* content, const size_t size)
+{
+    res->ContentLength = size;
+    res->Content = content;
+}
+
+void response_set_header(const HttpResponse res, const Header header)
+{
+    ARRAY_APPEND(&res->Headers, header);
+}
+
+const char* response_to_str(const HttpResponse res, size_t* size)
 {
     StringBuilder sb = sb_create(20);
 
@@ -42,7 +75,7 @@ const char* response_to_str(const HttpResponse* res, size_t* size)
 
     if (res->Content) {
         sb_append_str(&sb, HTTP_NEW_LINE);
-        sb_append_str(&sb, res->Content);
+        sb_append_str_len(&sb, res->Content, res->ContentLength);
         sb_append_str(&sb, HTTP_NEW_LINE);
     }
 
@@ -51,10 +84,4 @@ const char* response_to_str(const HttpResponse* res, size_t* size)
 
     *size = sb.Count;
     return sb.Data;
-}
-
-void response_destroy(HttpResponse* res)
-{
-    free_headers(&res->Headers);
-    free((void*)res->Content);
 }

@@ -76,10 +76,13 @@ typedef struct
     size_t Capacity;
 } Buffer;
 
+// Utils
 int first_index_of(const char* buf, int size, char delim);
+Buffer read_file_to_end(const char* path);
+
 const char* get_header_value(const HeadersArray* headers, const char* header);
-void set_header_str(HeadersArray* headers, const char* header, const char* value);
-void set_header_str_len(HeadersArray* headers, const char* header, size_t header_len, const char* value, size_t value_len);
-void set_header_i32(HeadersArray* headers, const char* header, int32_t value);
+Header create_header_str(const char* header, const char* value);
+Header create_header_str_len(const char* header, size_t header_len, const char* value, size_t value_len);
+Header create_header_i32(const char* header, int32_t value);
 void free_headers(HeadersArray* headers);
 #endif //COMMON_H

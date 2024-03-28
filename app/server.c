@@ -34,6 +34,9 @@ typedef struct
 
 static Client Clients[MAX_CLIENTS];
 
+static const char* files_directory = NULL;
+static size_t files_directory_len = 0;
+
 Client* init_new_client(ClientInfo* info)
 {
 	Client* c = NULL;
@@ -66,13 +69,47 @@ void free_client(Client* c)
 	c->ClientInfo = NULL;
 }
 
+void serve_file(const HttpRequest* req, HttpResponse res)
+{
+	const size_t path_size = strlen(req->Path);
+	const int word_start = first_index_of(req->Path + 1, path_size - 1, '/');
+	if (word_start == 0) {
+		response_set_status(res, 404);
+		return;
+	}
+
+	const char* file_name = req->Path + word_start + 1;
+	const int file_name_size = path_size - word_start - 1;
+	if (file_name_size > 64) {
+		fprintf(stderr, "File name was bigger than 64 bytes!!\n");
+		response_set_status(res, 400);
+		return;
+	}
+
+	char full_file_path[64] = {0};
+	memcpy(full_file_path, files_directory, files_directory_len);
+	memcpy(full_file_path + files_directory_len, file_name, file_name_size);
+
+	Buffer file = read_file_to_end(full_file_path);
+	if (file.Count <= 0) {
+		response_set_status(res, 404);
+		ARRAY_FREE(&file);
+		return;
+	}
+
+	response_set_status(res, 200);
+	// Buffer will be freed when the response is destroyed
+	response_set_content(res, file.Data, file.Count);
+}
+
 HttpResponse handle_request(const HttpRequest* req)
 {
-	HttpResponse res = {0};
+	HttpResponse res;
+	response_create(&res);
 	
 	if (req->Method == METHOD_HEAD) {
 		// We don't really handle files for now, so no headers in response
-		response_set_status(&res, 200);
+		response_set_status(res, 200);
 		return res;
 	}
 
@@ -83,24 +120,31 @@ HttpResponse handle_request(const HttpRequest* req)
 		// Test 5: Parse headers
 		const char* value = get_header_value(&req->Headers, "User-Agent");
 		if (!value) {
-			response_set_status(&res, 400);
+			response_set_status(res, 400);
 			return res;
 		}
 		const size_t value_len = strlen(value);
 		// This str is freed with the response
-		response_set_status(&res, 200);
-		set_header_str(&res.Headers, "Content-Type", "text/plain");
-		set_header_i32(&res.Headers, "Content-Length", value_len);
+		response_set_status(res, 200);
+		response_set_header(res, create_header_str("Content-Type", "text/plain"));
+		response_set_header(res, create_header_i32("Content-Length", value_len));
 
-		res.Content = malloc(value_len + 1);
-		strcpy((char*)res.Content, value);
+		char* tmp = malloc(value_len);
+		strcpy(tmp, value);
+		response_set_content(res, tmp, value_len);
+		return res;
+	}
+
+	if (path_size >= 5 && strncmp(req->Path, "/files", 5) == 0) {
+		// Test 7: Get a file
+		serve_file(req, res);
 		return res;
 	}
 
 	if (path_size >= 5 && strncmp(req->Path, "/echo", 5) != 0) {
 		// Path didn't start with "/echo" - Test 3: Respond with 404
 		printf("Matched Test 3\n");
-		response_set_status(&res, 404);
+		response_set_status(res, 404);
 		return res;
 	}
 
@@ -111,11 +155,11 @@ HttpResponse handle_request(const HttpRequest* req)
 		if (path_size == 1) {
 			// Path was just "/" - Test 2: Respond with 200
 			printf("Matched Test 2\n");
-			response_set_status(&res, 200);
+			response_set_status(res, 200);
 		} else {
 			// Path was some other route
 			printf("Path was some other route\n");
-			response_set_status(&res, 404);
+			response_set_status(res, 404);
 		}
 		return res;
 	}
@@ -126,22 +170,20 @@ HttpResponse handle_request(const HttpRequest* req)
 	const int reply_str_size = path_size - word_start - 2;
 	if (reply_str_size <= 0) {
 		// Path only had one '/' - Idk what we do here honestly
-		response_set_status(&res, 400);
+		response_set_status(res, 400);
 		return res;
 	}
 
 	// Test 4: Respond with content
-	char* reply_str = malloc(reply_str_size + 1);
+	char* reply_str = malloc(reply_str_size);
 	// +2 same logic as above
 	memcpy(reply_str, req->Path + word_start + 2, reply_str_size);
-	reply_str[reply_str_size] = '\0';
 
-	response_set_status(&res, 200);
-	set_header_str(&res.Headers, "Content-Type", "text/plain");
-	set_header_i32(&res.Headers, "Content-Length", reply_str_size);
+	response_set_status(res, 200);
+	response_set_header(res, create_header_str("Content-Type", "text/plain"));
+	response_set_header(res, create_header_i32("Content-Length", reply_str_size));
 	// This str is freed with the response
-	res.Content = reply_str;
-	
+	response_set_content(res, reply_str, reply_str_size);
 	return res;
 }
 
@@ -169,7 +211,6 @@ void try_read_data(Client* c)
 
 		pthread_mutex_lock(&IN_BUF_MUTEX);
 		const int nbytes = recv(c->ClientInfo->Socket, IN_BUF, BUF_SIZE, 0);
-		printf("Received %d bytes\n", nbytes);
 		if (nbytes > 0) {
 			ARRAY_APPEND_MANY(&c->In, IN_BUF, nbytes);
 		}
@@ -200,7 +241,7 @@ void try_read_data(Client* c)
 		HttpResponse res = handle_request(&req);
 		c->In.Count = 0;
 		size_t res_size;
-		const char* res_str = response_to_str(&res, &res_size);
+		const char* res_str = response_to_str(res, &res_size);
 
 		printf("Sending response to client %s:%u (%d):\n\n%.*s",
 			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
@@ -217,7 +258,7 @@ void try_read_data(Client* c)
 		if (!connection || strcmp(connection, "keep-alive") != 0) {
 			free_client(c);
 		}
-		response_destroy(&res);
+		response_destroy(res);
 		request_destroy(&req);
 		free((void*)res_str);
 	}
@@ -237,7 +278,14 @@ void* network_function(void* arg)
 	return NULL;
 }
 
-int main() {
+int main(const int argc, const char** argv) {
+	if (argc > 2) {
+		if (strcmp(argv[1], "--directory") == 0) {
+			files_directory = argv[2];
+			files_directory_len = strlen(files_directory);
+		}
+	}
+
 	// Disable output buffering
 	setbuf(stdout, NULL);
 	printf("Starting socket...\n");

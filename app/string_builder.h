@@ -15,6 +15,7 @@ StringBuilder sb_create(size_t capacity);
 void sb_destroy(StringBuilder* sb);
 
 void sb_append_str(StringBuilder* sb, const char* str);
+void sb_append_str_len(StringBuilder* sb, const char* str, size_t size);
 void sb_append_char(StringBuilder* sb, char c);
 void sb_append_i8(StringBuilder* sb, int8_t val);
 void sb_append_u8(StringBuilder* sb, uint8_t val);

@@ -7,26 +7,6 @@
 
 #include "common.h"
 
-/*#define INITIAL_CAPACITY 10
-
-#define APPEND(sb, str, size) \
-    memcpy((sb)->Data + (sb)->Size, str, size); \
-    (sb)->Size += size; \
-
-void ensure_capacity(StringBuilder* sb, const size_t size)
-{
-    if (sb->Size + size <= sb->Capacity) {
-        return;
-    }
-
-    const size_t new_chuck_size = sb->Capacity == 0 ? INITIAL_CAPACITY : sb->Capacity * 2;
-    const size_t new_size = new_chuck_size >= size ? new_chuck_size : sb->Capacity + size;
-
-    sb->Data = realloc(sb->Data, new_size);
-    assert(sb->Data && "Out of RAM lol");
-    sb->Capacity = new_size;
-}*/
-
 StringBuilder sb_create(const size_t capacity)
 {
     const StringBuilder sb = {
@@ -47,6 +27,11 @@ void sb_destroy(StringBuilder *sb)
 void sb_append_str(StringBuilder *sb, const char *str)
 {
     const size_t size = strlen(str);
+    ARRAY_APPEND_MANY(sb, str, size);
+}
+
+void sb_append_str_len(StringBuilder* sb, const char* str, const size_t size)
+{
     ARRAY_APPEND_MANY(sb, str, size);
 }
 

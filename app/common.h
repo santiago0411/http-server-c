@@ -2,6 +2,7 @@
 #define COMMON_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -79,6 +80,7 @@ typedef struct
 // Utils
 int first_index_of(const char* buf, int size, char delim);
 Buffer read_file_to_end(const char* path);
+bool write_file(const char* path, const Buffer* file);
 
 const char* get_header_value(const HeadersArray* headers, const char* header);
 Header create_header_str(const char* header, const char* value);

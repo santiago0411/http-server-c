@@ -69,29 +69,51 @@ void free_client(Client* c)
 	c->ClientInfo = NULL;
 }
 
-void serve_file(const HttpRequest* req, HttpResponse res)
+const char* build_file_path(const HttpRequest* req, HttpResponse res)
 {
 	const size_t path_size = strlen(req->Path);
 	const int word_start = first_index_of(req->Path + 1, path_size - 1, '/');
 	if (word_start == 0) {
 		response_set_status(res, 404);
-		return;
+		return NULL;
 	}
 
 	const char* file_name = req->Path + word_start + 1;
 	const int file_name_size = path_size - word_start - 1;
-	if (file_name_size > 64) {
-		fprintf(stderr, "File name was bigger than 64 bytes!!\n");
-		response_set_status(res, 400);
+
+	char* full_file_path = calloc(files_directory_len - 1 + file_name_size, 1);
+	memcpy(full_file_path, files_directory, files_directory_len - 1);
+	memcpy(full_file_path + files_directory_len - 1, file_name, file_name_size);
+	return full_file_path;
+}
+
+void write_file_from_body(const HttpRequest* req, HttpResponse res)
+{
+	const char* full_file_path = build_file_path(req, res);
+	if (!full_file_path) {
+		fprintf(stderr, "Failed to write file, invalid path.\n");
 		return;
 	}
 
-	char* full_file_path = malloc(files_directory_len - 1 + file_name_size);
-	memcpy(full_file_path, files_directory, files_directory_len - 1);
-	memcpy(full_file_path + files_directory_len - 1, file_name, file_name_size);
+	Buffer buf = {
+		.Data = (char*)req->Body,
+		.Count = strlen(req->Body)
+	};
+	write_file(full_file_path, &buf);
+	free((void*)full_file_path);
+	response_set_status(res, 200);
+}
+
+void serve_file(const HttpRequest* req, HttpResponse res)
+{
+	const char* full_file_path = build_file_path(req, res);
+	if (!full_file_path) {
+		fprintf(stderr, "Failed to serve file, invalid path.\n");
+		return;
+	}
 
 	Buffer file = read_file_to_end(full_file_path);
-	free(full_file_path);
+	free((void*)full_file_path);
 
 	if (file.Count <= 0) {
 		response_set_status(res, 404);
@@ -140,8 +162,13 @@ HttpResponse handle_request(const HttpRequest* req)
 	}
 
 	if (path_size >= 5 && strncmp(req->Path, "/files", 5) == 0) {
-		// Test 7: Get a file
-		serve_file(req, res);
+		if (req->Method == METHOD_GET) {
+			// Test 7: Get a file
+			serve_file(req, res);
+		} else if (req->Method == METHOD_POST) {
+			// Test 8: Write a file
+			write_file_from_body(req, res);
+		}
 		return res;
 	}
 
@@ -230,7 +257,7 @@ void try_read_data(Client* c)
 		}
 	} while (true);
 
-	if (is_valid_http_request(&c->In)) {
+	if (c->In.Count > 0 || is_valid_http_request(&c->In)) {
 		printf("Received data from client %s:%u (%d):\n\n%.*s",
 			c->ClientInfo->RemoteAddress, c->ClientInfo->RemotePort, c->Id,
 			(int)c->In.Count, c->In.Data);

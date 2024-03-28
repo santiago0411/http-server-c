@@ -42,6 +42,26 @@ Buffer read_file_to_end(const char* path)
     return buf;
 }
 
+bool write_file(const char* path, const Buffer* buf)
+{
+    FILE* file = fopen(path, "wb");
+    if (!file) {
+        fprintf(stderr, "Failed to open file: %s\n", path);
+        return false;
+    }
+
+    printf("Writing file '%s'\n", path);
+
+    if (fwrite(buf->Data, sizeof(char), buf->Count, file) != buf->Count) {
+        fprintf(stderr, "Failed to write full file to disk. '%s'\n", path);
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    return true;
+}
+
 const char* get_header_value(const HeadersArray* headers, const char* header)
 {
     for (size_t i = 0; i < headers->Count; i++) {

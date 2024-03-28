@@ -100,6 +100,8 @@ void serve_file(const HttpRequest* req, HttpResponse res)
 	}
 
 	response_set_status(res, 200);
+	response_set_header(res, create_header_str("Content-Type", "application/octet-stream"));
+	response_set_header(res, create_header_i32("Content-Length", file.Count));
 	// Buffer will be freed when the response is destroyed
 	response_set_content(res, file.Data, file.Count);
 }

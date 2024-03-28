@@ -87,8 +87,8 @@ void serve_file(const HttpRequest* req, HttpResponse res)
 	}
 
 	char full_file_path[64] = {0};
-	memcpy(full_file_path, files_directory, files_directory_len);
-	memcpy(full_file_path + files_directory_len, file_name, file_name_size);
+	memcpy(full_file_path, files_directory, files_directory_len - 1);
+	memcpy(full_file_path + files_directory_len - 1, file_name, file_name_size);
 
 	Buffer file = read_file_to_end(full_file_path);
 	if (file.Count <= 0) {
